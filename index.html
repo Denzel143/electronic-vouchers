@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Manajemen Voucher Elektronik</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f9; color: #333; }
+        .header { background: #333; color: white; padding: 15px; text-align: center; }
+        .tabs { display: flex; justify-content: center; background: #ddd; }
+        .tab-btn { flex: 1; padding: 15px; border: none; background: #ddd; cursor: pointer; font-weight: bold; font-size: 16px; }
+        .tab-btn.active { background: white; border-bottom: 3px solid #007bff; }
+        .tab-content { display: none; padding: 20px; text-align: center; max-width: 500px; margin: auto; }
+        .tab-content.active { display: block; }
+        
+        button.action-btn { padding: 12px 20px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px; font-weight: bold; }
+        button.action-btn:hover { background: #0056b3; }
+        
+        /* Style Daftar Voucher */
+        .list-container { text-align: left; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-top: 10px; }
+        .list-title { font-weight: bold; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 5px; }
+        .voucher-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 8px; border-bottom: 1px solid #eee; }
+        .voucher-item:last-child { border-bottom: none; }
+        .voucher-info { display: flex; flex-direction: column; }
+        .voucher-code { font-weight: bold; font-size: 16px; letter-spacing: 1px; }
+        .voucher-status { font-size: 12px; margin-top: 2px; }
+        
+        .voucher-actions button { padding: 6px 10px; margin-left: 4px; font-size: 13px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-view-qr { background: #17a2b8; color: white; }
+        .btn-copy { background: #ffc107; color: #212529; }
+        .btn-delete { background: #dc3545; color: white; }
+        
+        #reader { width: 100%; margin: auto; }
+        
+        /* Modals & Overlay */
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .hidden { display: none !important; }
+        .modal { background: white; padding: 25px; border-radius: 8px; width: 85%; max-width: 350px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .modal p { font-size: 16px; margin-bottom: 20px; }
+        .modal-btns { display: flex; justify-content: space-around; }
+        .modal-btns button { padding: 8px 18px; font-size: 14px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-ok { background: #28a745; color: white; }
+        .btn-cancel { background: #6c757d; color: white; }
+        
+        #modalQrCode { margin: 15px auto; display: flex; justify-content: center; }
+
+        /* Tampilan Khusus Halaman URL Voucher (https://domain/KODE-UNIK) */
+        .voucher-view-card { background: white; padding: 30px; border-radius: 12px; max-width: 350px; margin: 50px auto; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+        .voucher-view-card h2 { margin-bottom: 5px; color: #007bff; }
+        #viewPageQr { margin: 20px auto; display: flex; justify-content: center; }
+    </style>
+</head>
+<body>
+
+    <div id="adminAppContainer">
+        <div class="header">
+            <h2>Sistem Voucher</h2>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('create')">Vouchers List</button>
+            <button class="tab-btn" onclick="switchTab('scan')">Scan Voucher</button>
+        </div>
+
+        <div id="createTab" class="tab-content active">
+            <button class="action-btn" onclick="createVoucher()">+ Generate Voucher Baru</button>
+            
+            <div class="list-container">
+                <div class="list-title">Semua Data Voucher Terdaftar</div>
+                <div id="voucherList">Mengambil data dari database...</div>
+            </div>
+        </div>
+
+        <div id="scanTab" class="tab-content">
+            <h3>Scan Voucher</h3>
+            <div id="reader"></div>
+            <p style="font-size: 12px; color: gray;">Arahkan kamera ke QR Code. Pemindaian berjalan otomatis.</p>
+        </div>
+    </div>
+
+    <div id="voucherViewPage" class="hidden">
+        <div class="voucher-view-card">
+            <p style="font-size: 14px; color: gray; margin: 0;">VOUCHER ELEKTRONIK</p>
+            <h2 id="viewPageCode">KODE-UNIK</h2>
+            <div id="viewPageQr"></div>
+            <p style="font-size: 13px; color: #555;">Tunjukkan QR Code ini kepada kasir/petugas untuk discan.</p>
+        </div>
+    </div>
+
+    <div id="overlay" class="overlay hidden">
+        <div class="modal">
+            <p id="modalText">Pesan di sini</p>
+            <div class="modal-btns">
+                <button id="btnOk" class="btn-ok">OK</button>
+                <button id="btnCancel" class="btn-cancel hidden">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="qrModal" class="overlay hidden">
+        <div class="modal">
+            <h3 style="margin: 0 0 10px 0;">QR Code Voucher</h3>
+            <p id="qrModalCodeText" style="font-weight: bold; margin: 0; color: #007bff;"></p>
+            <div id="modalQrCode"></div>
+            <button onclick="closeQrModal()" style="padding: 8px 20px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Tutup</button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. KONFIGURASI FIREBASE
+        // ==========================================
+        // WAJIB DIGANTI dengan Firebase Config milikmu sendiri
+        const firebaseConfig = {
+          apiKey: "AIzaSyDJr-6PSzrDEC7J9XfI38g3C_r65x9OlLA",
+          authDomain: "public-database-e58ab.firebaseapp.com",
+          databaseURL: "https://public-database-e58ab-default-rtdb.firebaseio.com",
+          projectId: "public-database-e58ab",
+          storageBucket: "public-database-e58ab.firebasestorage.app",
+          messagingSenderId: "595860953738",
+          appId: "1:595860953738:web:d0ad19f96351191137ab73",
+          measurementId: "G-QCYP5Y72J8"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Ganti dengan domain aslimu saat dideploy
+        const DOMAIN = "https://domainkamu.com/"; 
+        let html5QrcodeScanner = null;
+
+        // ==========================================
+        // 2. DETEKSI ROUTING (Cek apakah user membuka link voucher)
+        // ==========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            // Cara 1: Membaca path langsung (misal: domain.com/AbCd123456)
+            let code = window.location.pathname.replace(/^\/|\/$/g, '');
+            
+            // Cara 2: Fallback Parameter (misal untuk testing lokal: index.html?code=AbCd123456)
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('code')) {
+                code = urlParams.get('code');
+            }
+
+            // Validasi jika kode yang dibaca memiliki panjang 10 digit
+            if (code && code.length === 10) {
+                initVoucherViewPage(code);
+            } else {
+                initAdminApp();
+            }
+        });
+
+        // Tampilan Client (Hanya QR & Kode)
+        function initVoucherViewPage(code) {
+            document.getElementById('adminAppContainer').classList.add('hidden');
+            document.getElementById('voucherViewPage').classList.remove('hidden');
+            document.getElementById('viewPageCode').innerText = code;
+            
+            // Generate QR Code di halaman client
+            new QRCode(document.getElementById("viewPageQr"), {
+                text: DOMAIN + code,
+                width: 220,
+                height: 220
+            });
+        }
+
+        // Tampilan Utama (Dashboard Admin & Scanner)
+        function initAdminApp() {
+            listenToDatabase(); // Baca seluruh database secara realtime
+        }
+
+        // ==========================================
+        // 3. LOGIKA REALTIME DATABASE (READ ALL)
+        // ==========================================
+        function listenToDatabase() {
+            db.ref('vouchers').on('value', (snapshot) => {
+                const listContainer = document.getElementById('voucherList');
+                listContainer.innerHTML = '';
+
+                if (!snapshot.exists()) {
+                    listContainer.innerHTML = '<p style="color:gray; text-align:center;">Belum ada voucher di database.</p>';
+                    return;
+                }
+
+                snapshot.forEach((childSnapshot) => {
+                    const code = childSnapshot.key;
+                    const data = childSnapshot.val();
+                    
+                    const statusText = data.state ? "Sudah Dipakai" : "Belum Dipakai";
+                    const statusColor = data.state ? "#dc3545" : "#28a745";
+
+                    const item = document.createElement('div');
+                    item.className = 'voucher-item';
+                    item.innerHTML = `
+                        <div class="voucher-info">
+                            <span class="voucher-code">${code}</span>
+                            <span class="voucher-status" style="color: ${statusColor}">${statusText}</span>
+                        </div>
+                        <div class="voucher-actions">
+                            <button class="btn-view-qr" onclick="openQrModal('${code}')">👁️ QR</button>
+                            <button class="btn-copy" onclick="copyVoucherUrl('${code}')">📋 Link</button>
+                            <button class="btn-delete" onclick="deleteVoucher('${code}')">🗑️</button>
+                        </div>
+                    `;
+                    listContainer.appendChild(item);
+                });
+            });
+        }
+
+        // ==========================================
+        // 4. LOGIKA ACTIONS (GENERATE, COPY, DELETE, POPUP QR)
+        // ==========================================
+        function generateUniqueCode() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result = '';
+            for (let i = 0; i < 10; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        function createVoucher() {
+            const code = generateUniqueCode();
+            
+            // Simpan ke database dengan state false
+            db.ref('vouchers/' + code).set({
+                state: false
+            }).catch((error) => {
+                alert("Gagal membuat voucher: " + error.message);
+            });
+        }
+
+        function copyVoucherUrl(code) {
+            const fullUrl = DOMAIN + code;
+            // Opsi fallback jika testing lokal tanpa HTTPS agar copy tetap jalan
+            const textToCopy = (DOMAIN.includes('domainkamu.com')) ? window.location.href.split('?')[0] + "?code=" + code : fullUrl;
+
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                alert(`Link voucher ${code} berhasil dicopy ke clipboard!`);
+            }).catch(err => {
+                alert("Gagal mengcopy link otomatis.");
+            });
+        }
+
+        function deleteVoucher(code) {
+            if (confirm(`Apakah Anda yakin ingin menghapus voucher ${code} dari database?`)) {
+                db.ref('vouchers/' + code).remove().then(() => {
+                    alert("Voucher berhasil dihapus.");
+                });
+            }
+        }
+
+        function openQrModal(code) {
+            document.getElementById('qrModalCodeText').innerText = code;
+            document.getElementById('modalQrCode').innerHTML = ''; // bersihkan lama
+            
+            new QRCode(document.getElementById("modalQrCode"), {
+                text: DOMAIN + code,
+                width: 180,
+                height: 180
+            });
+            
+            document.getElementById('qrModal').classList.remove('hidden');
+        }
+
+        function closeQrModal() {
+            document.getElementById('qrModal').classList.add('hidden');
+        }
+
+        // ==========================================
+        // 5. TAB & SCANNER UTAMA
+        // ==========================================
+        function switchTab(tab) {
+            document.getElementById('createTab').classList.remove('active');
+            document.getElementById('scanTab').classList.remove('active');
+            document.querySelectorAll('.tab-btn')[0].classList.remove('active');
+            document.querySelectorAll('.tab-btn')[1].classList.remove('active');
+
+            if (tab === 'create') {
+                document.getElementById('createTab').classList.add('active');
+                document.querySelectorAll('.tab-btn')[0].classList.add('active');
+                stopScanner();
+            } else {
+                document.getElementById('scanTab').classList.add('active');
+                document.querySelectorAll('.tab-btn')[1].classList.add('active');
+                startScanner();
+            }
+        }
+
+        function startScanner() {
+            if (!html5QrcodeScanner) {
+                html5QrcodeScanner = new Html5Qrcode("reader");
+            }
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            html5QrcodeScanner.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText) => {
+                    html5QrcodeScanner.pause();
+                    processScannedData(decodedText);
+                },
+                (err) => {}
+            ).catch(err => console.log("Gagal menyalakan kamera", err));
+        }
+
+        function stopScanner() {
+            if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+                html5QrcodeScanner.stop().catch(err => console.log(err));
+            }
+        }
+
+        function processScannedData(decodedText) {
+            // Ekstrak kode dari URL yang discan (bisa lewat path / lewat parameter ?code=)
+            let code = "";
+            if (decodedText.includes('?code=')) {
+                const urlParams = new URLSearchParams(decodedText.split('?')[1]);
+                code = urlParams.get('code');
+            } else {
+                const parts = decodedText.split('/');
+                code = parts[parts.length - 1];
+            }
+
+            db.ref('vouchers/' + code).once('value').then((snapshot) => {
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    
+                    if (data.state === false) {
+                        showModal(`Gunakan Voucher (${code}) sekarang?`, true, () => {
+                            db.ref('vouchers/' + code).update({ state: true }).then(() => {
+                                alert("Sukses! Voucher berhasil diubah menjadi TRUE.");
+                                closeModal();
+                                html5QrcodeScanner.resume();
+                            });
+                        }, () => {
+                            closeModal();
+                            html5QrcodeScanner.resume();
+                        });
+                    } else {
+                        showModal(`Peringatan: Voucher (${code}) sudah pernah digunakan!`, false, () => {
+                            closeModal();
+                            html5QrcodeScanner.resume();
+                        });
+                    }
+                } else {
+                    showModal("Error: Kode voucher tidak ditemukan di database!", false, () => {
+                        closeModal();
+                        html5QrcodeScanner.resume();
+                    });
+                }
+            }).catch((err) => {
+                showModal("Gangguan koneksi database.", false, () => {
+                    closeModal();
+                    html5QrcodeScanner.resume();
+                });
+            });
+        }
+
+        // ==========================================
+        // 6. OVERLAY MODAL MANAGER
+        // ==========================================
+        function showModal(text, showCancelBtn, onOk, onCancel) {
+            document.getElementById('modalText').innerText = text;
+            const btnOk = document.getElementById('btnOk');
+            const btnCancel = document.getElementById('btnCancel');
+            
+            const newBtnOk = btnOk.cloneNode(true);
+            const newBtnCancel = btnCancel.cloneNode(true);
+            btnOk.parentNode.replaceChild(newBtnOk, btnOk);
+            btnCancel.parentNode.replaceChild(newBtnCancel, btnCancel);
+
+            newBtnOk.addEventListener('click', onOk);
+            if (showCancelBtn) {
+                newBtnCancel.classList.remove('hidden');
+                newBtnCancel.addEventListener('click', onCancel);
+            } else {
+                newBtnCancel.classList.add('hidden');
+            }
+
+            document.getElementById('overlay').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('overlay').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
