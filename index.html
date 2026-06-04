@@ -3,27 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistem Manajemen Voucher Elektronik</title>
+    <title>Sistem Voucher Elektronik - Squarecode</title>
     
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onCvLoaded()"></script>
 
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f9; color: #333; }
+        :root { --primary: #007bff; --bg: #f4f4f9; --text: #333; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+        
         .header { background: #333; color: white; padding: 15px; text-align: center; }
         .tabs { display: flex; justify-content: center; background: #ddd; }
-        .tab-btn { flex: 1; padding: 15px; border: none; background: #ddd; cursor: pointer; font-weight: bold; font-size: 16px; }
-        .tab-btn.active { background: white; border-bottom: 3px solid #007bff; }
-        .tab-content { display: none; padding: 20px; text-align: center; max-width: 500px; margin: auto; }
+        .tab-btn { flex: 1; padding: 15px; border: none; background: #ddd; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.2s; }
+        .tab-btn.active { background: white; border-bottom: 3px solid var(--primary); }
+        .tab-content { display: none; padding: 20px; text-align: center; max-width: 600px; margin: auto; }
         .tab-content.active { display: block; }
         
-        button.action-btn { padding: 12px 20px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px; font-weight: bold; }
+        button.action-btn { padding: 12px 20px; font-size: 16px; background: var(--primary); color: white; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px; font-weight: bold; }
         button.action-btn:hover { background: #0056b3; }
         
-        /* Style Daftar Voucher */
+        /* Daftar Voucher */
         .list-container { text-align: left; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-top: 10px; }
         .list-title { font-weight: bold; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 5px; }
         .voucher-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 8px; border-bottom: 1px solid #eee; }
@@ -36,10 +37,17 @@
         .btn-view-qr { background: #17a2b8; color: white; }
         .btn-copy { background: #ffc107; color: #212529; }
         .btn-delete { background: #dc3545; color: white; }
+
+        /* Scanner */
+        .camera-container { position: relative; width: 100%; height: 250px; max-width: 100%; border-radius: 8px; overflow: hidden; display: none; background: #000; margin: auto; }
+        video { width: 100%; height: 100%; display: block; object-fit: cover; }
+        .overlay-cam { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); pointer-events: none; display: flex; justify-content: center; align-items: center; z-index: 10; }
+        .target-box { width: 85%; height: 140px; border: 3px dashed rgba(255, 255, 255, 0.8); border-radius: 12px; box-shadow: 0 0 0 2000px rgba(0,0,0,0.5); position: relative; }
+        .target-box::after { content: 'Posisikan Squarecode di sini'; position: absolute; bottom: -30px; width: 100%; text-align: center; color: white; font-size: 12px; font-weight: bold; letter-spacing: 1px; }
+        .scan-status { text-align: center; font-weight: bold; color: var(--primary); font-size: 14px; margin-top: 10px; display: none; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
         
-        #reader { width: 100%; margin: auto; }
-        
-        /* Modals & Overlay */
+        /* Modals & Overlay General */
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
         .hidden { display: none !important; }
         .modal { background: white; padding: 25px; border-radius: 8px; width: 85%; max-width: 350px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
@@ -48,24 +56,23 @@
         .modal-btns button { padding: 8px 18px; font-size: 14px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .btn-ok { background: #28a745; color: white; }
         .btn-cancel { background: #6c757d; color: white; }
-        
-        #modalQrCode { margin: 15px auto; display: flex; justify-content: center; }
 
+        canvas { max-width: 100%; border: 2px solid #e2e8f0; border-radius: 8px; display: block; margin: 0 auto; background: #f1f5f9; }
+        
         /* Tampilan Khusus Halaman URL Voucher */
-        .voucher-view-card { background: white; padding: 30px; border-radius: 12px; max-width: 350px; margin: 50px auto; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
-        .voucher-view-card h2 { margin-bottom: 5px; color: #007bff; }
-        #viewPageQr { margin: 20px auto; display: flex; justify-content: center; }
+        .voucher-view-card { background: white; padding: 30px; border-radius: 12px; max-width: 400px; margin: 50px auto; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+        .voucher-view-card h2 { margin-bottom: 5px; color: var(--primary); }
     </style>
 </head>
 <body>
 
     <div id="adminAppContainer">
         <div class="header">
-            <h2>Sistem Voucher</h2>
+            <h2>Sistem Voucher Squarecode</h2>
         </div>
 
         <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('create')">Vouchers List</button>
+            <button class="tab-btn active" onclick="switchTab('create')">Daftar Voucher</button>
             <button class="tab-btn" onclick="switchTab('scan')">Scan Voucher</button>
         </div>
 
@@ -79,9 +86,16 @@
         </div>
 
         <div id="scanTab" class="tab-content">
-            <h3>Scan Voucher</h3>
-            <div id="reader"></div>
-            <p style="font-size: 12px; color: gray;">Arahkan kamera ke QR Code. Pemindaian berjalan otomatis.</p>
+            <h3>Pemindai Squarecode</h3>
+            <div id="camera-container" class="camera-container">
+                <video id="video-feed" autoplay playsinline></video>
+                <div class="overlay-cam">
+                    <div class="target-box"></div>
+                </div>
+            </div>
+            <div id="status-indicator" class="scan-status">Mencari Kode...</div>
+            <p style="font-size: 12px; color: gray; margin-top: 15px;">Arahkan kamera ke Squarecode Voucher.</p>
+            <canvas id="canvas-scan" style="display:none;"></canvas>
         </div>
     </div>
 
@@ -103,9 +117,10 @@
 
     <div id="qrModal" class="overlay hidden">
         <div class="modal">
-            <h3 style="margin: 0 0 10px 0;">QR Code Voucher</h3>
-            <p id="qrModalCodeText" style="font-weight: bold; margin: 0; color: #007bff;"></p>
-            <div id="modalQrCode"></div>
+            <h3 style="margin: 0 0 10px 0;">Squarecode Voucher</h3>
+            <p id="qrModalCodeText" style="font-weight: bold; margin: 0 0 15px 0; color: #007bff;"></p>
+            <canvas id="modalCanvasCode"></canvas>
+            <br>
             <button onclick="closeQrModal()" style="padding: 8px 20px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Tutup</button>
         </div>
     </div>
@@ -126,10 +141,7 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-
         const DOMAIN = "https://domainkamu.com/"; 
-        let html5QrcodeScanner = null;
-        let audioCtx = null; 
 
         // ==========================================
         // 2. DETEKSI ROUTING & INIT
@@ -139,7 +151,8 @@
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.has('code')) code = urlParams.get('code');
 
-            if (code && code.length === 10) {
+            // Cek apakah ada code 15 digit angka (format Squarecode)
+            if (code && code.length === 15 && /^\d+$/.test(code)) {
                 initVoucherViewPage(code);
             } else {
                 initAdminApp();
@@ -151,22 +164,19 @@
             document.getElementById('voucherViewPage').classList.remove('hidden');
             const viewContent = document.getElementById('voucherViewContent');
 
-            // Cek keakuratan data di Firebase
             db.ref('vouchers/' + code).once('value').then((snapshot) => {
                 if (snapshot.exists()) {
                     const data = snapshot.val();
                     
                     if (data.state === false) {
-                        // Kode BENAR dan BELUM DIPAKAI: Tampilkan QR Code
                         viewContent.innerHTML = `
                             <p style="font-size: 14px; color: gray; margin: 0;">VOUCHER ELEKTRONIK</p>
-                            <h2 style="margin-bottom: 5px; color: #007bff;">${code}</h2>
-                            <div id="viewPageQr"></div>
-                            <p style="font-size: 13px; color: #555;">Tunjukkan QR Code ini kepada kasir/petugas untuk discan.</p>
+                            <h2 style="margin-bottom: 15px; color: #007bff;">${code}</h2>
+                            <canvas id="viewPageCanvas" style="margin-bottom:15px;"></canvas>
+                            <p style="font-size: 13px; color: #555;">Tunjukkan Squarecode ini kepada kasir untuk discan.</p>
                         `;
-                        new QRCode(document.getElementById("viewPageQr"), { text: DOMAIN + code, width: 220, height: 220 });
+                        drawSquarecode(code, 'viewPageCanvas');
                     } else {
-                        // Kode BENAR tapi SUDAH DIPAKAI
                         viewContent.innerHTML = `
                             <h2 style="color: #dc3545; margin-top: 10px;">Maaf</h2>
                             <p style="font-size: 16px; margin-bottom: 5px;">Voucher <b>${code}</b> sudah pernah dipakai.</p>
@@ -174,48 +184,52 @@
                         `;
                     }
                 } else {
-                    // Kode TIDAK DITEMUKAN
                     viewContent.innerHTML = `
                         <h2 style="color: #dc3545; margin-top: 10px;">Peringatan</h2>
                         <p style="font-size: 16px;">Voucher <b>${code}</b> tidak ditemukan di dalam database.</p>
-                        <p style="font-size: 13px; color: gray;">Pastikan link URL Anda benar.</p>
                     `;
                 }
             }).catch((err) => {
-                viewContent.innerHTML = `
-                    <h2 style="color: #dc3545;">Terjadi Kesalahan</h2>
-                    <p>Gagal menghubungi database voucher.</p>
-                `;
+                viewContent.innerHTML = `<h2 style="color: #dc3545;">Terjadi Kesalahan Koneksi</h2>`;
             });
         }
 
         function initAdminApp() { listenToDatabase(); }
 
         // ==========================================
-        // 3. LOGIKA BEEP SCANNER
+        // 3. LOGIKA PEMBUATAN SQUARECODE VISUAL
         // ==========================================
-        function playBeep() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+        const CELL_SIZE = 16; 
+        const COLS = 17; 
+        const ROWS = 6;  
 
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
+        function drawSquarecode(codeStr, canvasId) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d'); 
+            const padding = 20;
+            
+            canvas.width = (COLS * CELL_SIZE) + (padding * 2); 
+            canvas.height = (ROWS * CELL_SIZE) + (padding * 2);
+            ctx.fillStyle = "#FFD700"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = 2; ctx.fillStyle = "#FFFFFF"; ctx.fillRect(padding, padding, COLS * CELL_SIZE, ROWS * CELL_SIZE);
+            ctx.strokeStyle = "#000000"; ctx.strokeRect(padding, padding, COLS * CELL_SIZE, ROWS * CELL_SIZE);
 
-            oscillator.type = 'sine';
-            oscillator.frequency.value = 3000; 
+            function drawCell(col, row, isWhite) {
+                const x = padding + (col * CELL_SIZE); const y = padding + (row * CELL_SIZE);
+                ctx.fillStyle = isWhite ? "#FFFFFF" : "#000000";
+                ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE); ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+            }
 
-            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.1);
+            drawCell(0, 0, true); drawCell(COLS - 1, 0, false); drawCell(0, ROWS - 1, true); drawCell(COLS - 1, ROWS - 1, true); 
 
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            oscillator.start();
-            oscillator.stop(audioCtx.currentTime + 0.1); 
+            for (let i = 0; i < 15; i++) {
+                let num = parseInt(codeStr[i]); let bits = num.toString(2).padStart(4, '0');
+                for (let b = 0; b < 4; b++) { drawCell(i + 1, b + 1, bits[b] === '1'); }
+            }
         }
 
         // ==========================================
-        // 4. LOGIKA DATABASE READ ALL
+        // 4. DATABASE & ACTIONS VOUCHER
         // ==========================================
         function listenToDatabase() {
             db.ref('vouchers').on('value', (snapshot) => {
@@ -242,7 +256,7 @@
                             <span class="voucher-status" style="color: ${statusColor}">${statusText}</span>
                         </div>
                         <div class="voucher-actions">
-                            <button class="btn-view-qr" onclick="openQrModal('${code}')">👁️ QR</button>
+                            <button class="btn-view-qr" onclick="openQrModal('${code}')">👁️ Code</button>
                             <button class="btn-copy" onclick="copyVoucherUrl('${code}')">📋 Link</button>
                             <button class="btn-delete" onclick="deleteVoucher('${code}')">🗑️</button>
                         </div>
@@ -252,20 +266,16 @@
             });
         }
 
-        // ==========================================
-        // 5. ACTIONS: GENERATE, COPY, DELETE, POPUP QR
-        // ==========================================
-        function generateUniqueCode() {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        function generate15DigitCode() {
             let result = '';
-            for (let i = 0; i < 10; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            for (let i = 0; i < 15; i++) {
+                result += Math.floor(Math.random() * 10).toString();
             }
             return result;
         }
 
         function createVoucher() {
-            const code = generateUniqueCode();
+            const code = generate15DigitCode();
             db.ref('vouchers/' + code).set({ state: false }).catch((error) => {
                 showModal("Gagal membuat voucher: " + error.message, false, closeModal);
             });
@@ -283,29 +293,26 @@
         }
 
         function deleteVoucher(code) {
-            showModal(`Apakah Anda yakin ingin menghapus voucher ${code} dari database?`, true, 
-            () => { 
-                db.ref('vouchers/' + code).remove().then(() => {
-                    closeModal(); 
-                });
-            }, 
-            () => { closeModal(); });
+            showModal(`Hapus voucher ${code} dari database?`, true, 
+            () => { db.ref('vouchers/' + code).remove().then(() => closeModal()); }, 
+            () => closeModal());
         }
 
         function openQrModal(code) {
             document.getElementById('qrModalCodeText').innerText = code;
-            document.getElementById('modalQrCode').innerHTML = ''; 
-            new QRCode(document.getElementById("modalQrCode"), { text: DOMAIN + code, width: 180, height: 180 });
+            drawSquarecode(code, 'modalCanvasCode');
             document.getElementById('qrModal').classList.remove('hidden');
         }
-
-        function closeQrModal() {
-            document.getElementById('qrModal').classList.add('hidden');
-        }
+        function closeQrModal() { document.getElementById('qrModal').classList.add('hidden'); }
 
         // ==========================================
-        // 6. TAB & SCANNER UTAMA
+        // 5. TABS & OPENCV SCANNER UTAMA
         // ==========================================
+        let cvLoaded = false;
+        function onCvLoaded() { cvLoaded = true; }
+
+        let stream = null; let isScanning = false; let animationFrameId = null;
+
         function switchTab(tab) {
             document.getElementById('createTab').classList.remove('active');
             document.getElementById('scanTab').classList.remove('active');
@@ -323,75 +330,177 @@
             }
         }
 
+        function playSuccessFeedback() {
+            try {
+                if (navigator.vibrate) navigator.vibrate(200);
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    const ctx = new AudioContext(); const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                    osc.connect(gain); gain.connect(ctx.destination);
+                    osc.type = 'sine'; osc.frequency.setValueAtTime(3000, ctx.currentTime); 
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                    osc.start(); gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.10); 
+                    osc.stop(ctx.currentTime + 0.10);
+                }
+            } catch(e) {}
+        }
+
         function startScanner() {
-            if (!html5QrcodeScanner) html5QrcodeScanner = new Html5Qrcode("reader");
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-            html5QrcodeScanner.start(
-                { facingMode: "environment" },
-                config,
-                (decodedText) => {
-                    html5QrcodeScanner.pause();
-                    playBeep(); 
-                    processScannedData(decodedText);
-                },
-                (err) => {}
-            ).catch(err => console.log("Gagal menyalakan kamera", err));
+            if (!cvLoaded) { showModal("Memuat Sistem Vision, mohon tunggu sebentar lalu coba lagi.", false, closeModal); switchTab('create'); return; }
+            if (isScanning) return;
+
+            const video = document.getElementById('video-feed');
+            const container = document.getElementById('camera-container');
+            const statusIndicator = document.getElementById('status-indicator');
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } })
+                .then(s => {
+                    stream = s; video.srcObject = stream; container.style.display = "block";
+                    statusIndicator.style.display = "block";
+                    isScanning = true; animationFrameId = requestAnimationFrame(autoScanLoop);
+                })
+                .catch(err => { showModal("Akses kamera ditolak / tidak ditemukan.", false, closeModal); switchTab('create'); });
         }
 
         function stopScanner() {
-            if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
-                html5QrcodeScanner.stop().catch(err => console.log(err));
+            isScanning = false;
+            if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; }
+            if (stream) { stream.getTracks().forEach(track => track.stop()); stream = null; }
+            document.getElementById('camera-container').style.display = "none";
+            document.getElementById('status-indicator').style.display = "none";
+        }
+
+        function autoScanLoop() {
+            if (!isScanning) return;
+            const video = document.getElementById('video-feed');
+            const canvas = document.getElementById('canvas-scan');
+            const container = document.getElementById('camera-container');
+            
+            if (video.readyState === video.HAVE_CURRENT_DATA || video.readyState === video.HAVE_ENOUGH_DATA) {
+                const cw = container.clientWidth; const ch = container.clientHeight;
+                const boxW = cw * 0.85; const boxH = 140; const boxX = (cw - boxW) / 2; const boxY = (ch - boxH) / 2;
+                const vw = video.videoWidth; const vh = video.videoHeight;
+                const scale = Math.max(cw / vw, ch / vh);
+                
+                const offsetX = (vw * scale - cw) / 2; const offsetY = (vh * scale - ch) / 2;
+                const sx = (boxX + offsetX) / scale; const sy = (boxY + offsetY) / scale;
+                const sw = boxW / scale; const sh = boxH / scale;
+
+                canvas.width = sw; canvas.height = sh;
+                canvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+                
+                let decodedText = processImageCV();
+                if (decodedText) { 
+                    playSuccessFeedback(); 
+                    stopScanner(); 
+                    processScannedData(decodedText); 
+                    return; 
+                }
+            }
+            if (isScanning) animationFrameId = requestAnimationFrame(autoScanLoop);
+        }
+
+        function ptDist(p1, p2) { return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2)); }
+
+        function processImageCV() {
+            let src = null, gray = null, blur = null, morphed = null, thresh = null;
+            let contours = null, hierarchy = null, bestApprox = null;
+            let srcTri = null, dstTri = null, M = null, warped = null, finalThresh = null, kernel = null;
+            try {
+                const canvas = document.getElementById('canvas-scan'); src = cv.imread(canvas);
+                gray = new cv.Mat(); cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+                blur = new cv.Mat(); cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
+                kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3)); morphed = new cv.Mat(); cv.morphologyEx(blur, morphed, cv.MORPH_CLOSE, kernel);
+                thresh = new cv.Mat(); cv.adaptiveThreshold(morphed, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 5);
+                contours = new cv.MatVector(); hierarchy = new cv.Mat(); cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+                let maxScore = -1; bestApprox = new cv.Mat(); let found = false;
+                for (let i = 0; i < contours.size(); ++i) {
+                    let cnt = contours.get(i); let area = cv.contourArea(cnt);
+                    if (area > 1000) {
+                        let peri = cv.arcLength(cnt, true); let approx = new cv.Mat(); cv.approxPolyDP(cnt, approx, 0.04 * peri, true);
+                        if (approx.rows === 4 && cv.isContourConvex(approx)) {
+                            let pts = []; for(let j=0; j<4; j++) pts.push({x: approx.data32S[j*2], y: approx.data32S[j*2+1]});
+                            let cx = 0, cy = 0; pts.forEach(p => { cx+=p.x; cy+=p.y; }); cx /= 4; cy /= 4;
+                            pts.sort((a,b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+                            let w = (ptDist(pts[0], pts[1]) + ptDist(pts[2], pts[3])) / 2;
+                            let h = (ptDist(pts[1], pts[2]) + ptDist(pts[3], pts[0])) / 2; let ratio = Math.max(w/h, h/w);
+                            if (ratio >= 1.2 && ratio <= 5.0) {
+                                let score = area / (1 + Math.abs(ratio - 2.83));
+                                if (score > maxScore) { maxScore = score; approx.copyTo(bestApprox); found = true; }
+                            }
+                        }
+                        approx.delete();
+                    }
+                    cnt.delete();
+                }
+
+                if (!found) return null; 
+
+                let finalPts = []; for(let i=0; i<4; i++) finalPts.push({x: bestApprox.data32S[i*2], y: bestApprox.data32S[i*2+1]});
+                let cx_c = 0, cy_c = 0; finalPts.forEach(p => { cx_c+=p.x; cy_c+=p.y; }); cx_c /= 4; cy_c /= 4;
+                finalPts.sort((a,b) => Math.atan2(a.y - cy_c, a.x - cx_c) - Math.atan2(b.y - cy_c, b.x - cx_c));
+                
+                const targetW = 340; const targetH = 120;
+                srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [finalPts[0].x, finalPts[0].y, finalPts[1].x, finalPts[1].y, finalPts[2].x, finalPts[2].y, finalPts[3].x, finalPts[3].y]);
+                dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, targetW, 0, targetW, targetH, 0, targetH]);
+                M = cv.getPerspectiveTransform(srcTri, dstTri); warped = new cv.Mat(); cv.warpPerspective(gray, warped, M, new cv.Size(targetW, targetH));
+                finalThresh = new cv.Mat(); cv.threshold(warped, finalThresh, 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU);
+
+                function getCellColor(col, row) {
+                    let x = col * 20 + 10; let y = row * 20 + 10;
+                    let roi = finalThresh.roi(new cv.Rect(x - 6, y - 6, 12, 12)); let mean = cv.mean(roi)[0]; roi.delete();
+                    return mean > 127 ? 1 : 0; 
+                }
+
+                let mTL = getCellColor(0, 0), mTR = getCellColor(COLS-1, 0), mBL = getCellColor(0, ROWS-1), mBR = getCellColor(COLS-1, ROWS-1);
+                let blackCount = (mTL===0?1:0) + (mTR===0?1:0) + (mBL===0?1:0) + (mBR===0?1:0);
+                if (blackCount !== 1) return null; 
+
+                if (mTL === 0) cv.rotate(finalThresh, finalThresh, cv.ROTATE_90_COUNTERCLOCKWISE);
+                else if (mBL === 0) cv.rotate(finalThresh, finalThresh, cv.ROTATE_180);
+                else if (mBR === 0) cv.rotate(finalThresh, finalThresh, cv.ROTATE_90_CLOCKWISE);
+
+                let resultText = ""; let hasErrorDigit = false;
+                for (let i = 0; i < 15; i++) {
+                    let binStr = ""; for (let b = 0; b < 4; b++) binStr += getCellColor(i + 1, b + 1).toString();
+                    let digit = parseInt(binStr, 2);
+                    if (digit > 9) { hasErrorDigit = true; } else { resultText += digit.toString(); }
+                }
+
+                if (hasErrorDigit || resultText.length !== 15) return null;
+                return resultText; 
+            } catch (err) { return null; } 
+            finally {
+                if(src) src.delete(); if(gray) gray.delete(); if(blur) blur.delete(); if(morphed) morphed.delete(); if(thresh) thresh.delete(); if(kernel) kernel.delete();
+                if(contours) contours.delete(); if(hierarchy) hierarchy.delete(); if(bestApprox) bestApprox.delete(); if(srcTri) srcTri.delete();
+                if(dstTri) dstTri.delete(); if(M) M.delete(); if(warped) warped.delete(); if(finalThresh) finalThresh.delete();
             }
         }
 
-        function processScannedData(decodedText) {
-            let code = "";
-            if (decodedText.includes('?code=')) {
-                const urlParams = new URLSearchParams(decodedText.split('?')[1]);
-                code = urlParams.get('code');
-            } else {
-                const parts = decodedText.split('/');
-                code = parts[parts.length - 1];
-            }
-
+        function processScannedData(code) {
             db.ref('vouchers/' + code).once('value').then((snapshot) => {
                 if (snapshot.exists()) {
                     const data = snapshot.val();
-                    
                     if (data.state === false) {
                         showModal(`Gunakan Voucher (${code}) sekarang?`, true, () => {
                             db.ref('vouchers/' + code).update({ state: true }).then(() => {
-                                showModal("Sukses! Voucher berhasil digunakan.", false, () => {
-                                    closeModal();
-                                    html5QrcodeScanner.resume();
-                                });
+                                showModal("Sukses! Voucher berhasil digunakan.", false, () => { closeModal(); startScanner(); });
                             });
-                        }, () => {
-                            closeModal();
-                            html5QrcodeScanner.resume();
-                        });
+                        }, () => { closeModal(); startScanner(); });
                     } else {
-                        showModal(`Peringatan: Voucher (${code}) sudah pernah digunakan!`, false, () => {
-                            closeModal();
-                            html5QrcodeScanner.resume();
-                        });
+                        showModal(`Peringatan: Voucher (${code}) sudah pernah digunakan!`, false, () => { closeModal(); startScanner(); });
                     }
                 } else {
-                    showModal("Error: Kode voucher tidak ditemukan di database!", false, () => {
-                        closeModal();
-                        html5QrcodeScanner.resume();
-                    });
+                    showModal("Error: Kode voucher tidak ditemukan di database!", false, () => { closeModal(); startScanner(); });
                 }
             }).catch((err) => {
-                showModal("Gangguan koneksi database.", false, () => {
-                    closeModal();
-                    html5QrcodeScanner.resume();
-                });
+                showModal("Gangguan koneksi database.", false, () => { closeModal(); startScanner(); });
             });
         }
 
         // ==========================================
-        // 7. OVERLAY MODAL MANAGER UTAMA
+        // 6. OVERLAY MODAL MANAGER
         // ==========================================
         function showModal(text, showCancelBtn, onOk, onCancel) {
             document.getElementById('modalText').innerText = text;
@@ -411,13 +520,10 @@
             } else {
                 newBtnCancel.classList.add('hidden');
             }
-
             document.getElementById('overlay').classList.remove('hidden');
         }
 
-        function closeModal() {
-            document.getElementById('overlay').classList.add('hidden');
-        }
+        function closeModal() { document.getElementById('overlay').classList.add('hidden'); }
     </script>
 </body>
 </html>
